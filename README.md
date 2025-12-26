@@ -2,7 +2,7 @@
 
 Une application web élégante de reconnaissance d'images utilisant TensorFlow.js et MobileNet avec une interface inspirée de la nature.
 
-![Vision Naturelle Screenshot](https://via.placeholder.com/800x450/8B7355/FFFFFF?text=Vision+Naturelle)
+![Vision Naturelle Screenshot](https://bsh54.github.io/Natural-Vision-IA/Capture%20d%E2%80%99%C3%A9cran%202025-12-26%20094054.png)
 
 ##  Fonctionnalités
 
