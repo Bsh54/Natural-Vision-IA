@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vision Naturelle - Reconnaissance d'images</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.11.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0"></script>
+    <style>
+        :root {
+            --couleur-terre: #8B7355;
+            --couleur-mousse: #6B8E23;
+            --couleur-sable: #D2B48C;
+            --couleur-ciel: #87CEEB;
+            --couleur-pierre: #A9A9A9;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: 
+                radial-gradient(circle at 20% 50%, var(--couleur-mousse) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, var(--couleur-ciel) 0%, transparent 50%),
+                linear-gradient(135deg, var(--couleur-sable) 0%, #f5f1e8 100%);
+            min-height: 100vh;
+            font-family: 'Georgia', 'Times New Roman', serif;
+            color: #333;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        /* Effet de texture naturelle */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                radial-gradient(circle at 10% 20%, rgba(139, 115, 85, 0.1) 1px, transparent 1px),
+                radial-gradient(circle at 90% 80%, rgba(107, 142, 35, 0.1) 1px, transparent 1px);
+            background-size: 50px 50px;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        /* Écran de chargement */
+        .ecran-chargement {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(245, 241, 232, 0.95);
+            backdrop-filter: blur(10px);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            transition: opacity 0.5s ease;
+        }
+
+        .ecran-chargement.cache {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .chargeur-naturel {
+            position: relative;
+            width: 120px;
+            height: 120px;
+            margin-bottom: 30px;
+        }
+
+        .feuille {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            background: var(--couleur-mousse);
+            border-radius: 50% 0 50% 50%;
+            transform-origin: center;
+            animation: pousser 2s ease-in-out infinite;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .feuille:nth-child(1) {
+            top: 0;
+            left: 40px;
+            animation-delay: 0s;
+        }
+
+        .feuille:nth-child(2) {
+            top: 40px;
+            left: 0;
+            animation-delay: 0.2s;
+            background: var(--couleur-terre);
+        }
+
+        .feuille:nth-child(3) {
+            top: 40px;
+            right: 0;
+            animation-delay: 0.4s;
+            background: var(--couleur-sable);
+        }
+
+        .feuille:nth-child(4) {
+            bottom: 0;
+            left: 40px;
+            animation-delay: 0.6s;
+            background: var(--couleur-pierre);
+        }
+
+        @keyframes pousser {
+            0%, 100% {
+                transform: scale(1) rotate(0deg);
+            }
+            50% {
+                transform: scale(1.2) rotate(180deg);
+            }
+        }
+
+        .texte-chargement {
+            text-align: center;
+            max-width: 400px;
+        }
+
+        .texte-chargement h2 {
+            font-size: 1.8rem;
+            color: var(--couleur-terre);
+            margin-bottom: 15px;
+            font-weight: normal;
+            letter-spacing: 1px;
+        }
+
+        .texte-chargement p {
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+
+        .barre-progression {
+            width: 300px;
+            height: 6px;
+            background: #e0d6c2;
+            border-radius: 3px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+
+        .remplissage-progression {
+            height: 100%;
+            background: linear-gradient(to right, var(--couleur-mousse), var(--couleur-terre));
+            width: 0%;
+            border-radius: 3px;
+            transition: width 0.3s ease;
+        }
+
+        .pourcentage {
+            font-size: 1.2rem;
+            color: var(--couleur-terre);
+            font-weight: bold;
+        }
+
+        .conteneur-principal {
+            max-width: 1000px;
+            margin: 40px auto;
+            padding: 20px;
+            position: relative;
+            z-index: 2;
+        }
+
+        .carte {
+            background: rgba(255, 253, 248, 0.92);
+            border-radius: 20px;
+            box-shadow: 
+                0 10px 40px rgba(139, 115, 85, 0.15),
+                inset 0 1px 0 rgba(255, 255, 255, 0.8);
+            border: 1px solid rgba(210, 180, 140, 0.3);
+            overflow: hidden;
+            backdrop-filter: blur(5px);
+        }
+
+        .en-tete {
+            background: linear-gradient(to right, var(--couleur-terre), var(--couleur-mousse));
+            padding: 40px 30px;
+            text-align: center;
+            border-bottom: 3px solid var(--couleur-sable);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .en-tete::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 1px, transparent 1px);
+            background-size: 30px 30px;
+            animation: flotter 20s linear infinite;
+        }
+
+        @keyframes flotter {
+            0% { transform: translate(0, 0) rotate(0deg); }
+            100% { transform: translate(-30px, -30px) rotate(360deg); }
+        }
+
+        .en-tete h1 {
+            font-size: 2.8rem;
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            margin-bottom: 10px;
+            font-weight: normal;
+            letter-spacing: 2px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .en-tete p {
+            color: rgba(255,255,255,0.9);
+            font-size: 1.2rem;
+            max-width: 600px;
+            margin: 0 auto;
+            line-height: 1.5;
+            position: relative;
+            z-index: 1;
+        }
+
+        .contenu {
+            display: flex;
+            flex-direction: column;
+            padding: 40px;
+            gap: 40px;
+        }
+
+        @media (min-width: 900px) {
+            .contenu {
+                flex-direction: row;
+            }
+        }
+
+        .section-upload, .section-resultats {
+            flex: 1;
+        }
+
+        .zone-depot {
+            border: 3px dashed var(--couleur-terre);
+            border-radius: 15px;
+            padding: 50px 30px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.4s ease;
+            background: rgba(245, 241, 232, 0.7);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .zone-depot::before {
+            content: '🜚';
+            font-size: 80px;
+            color: var(--couleur-terre);
+            opacity: 0.2;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        .zone-depot:hover {
+            background: rgba(235, 227, 208, 0.9);
+            transform: translateY(-3px);
+            border-color: var(--couleur-mousse);
+            box-shadow: 0 10px 25px rgba(139, 115, 85, 0.2);
+        }
+
+        .zone-depot .icone {
+            font-size: 60px;
+            color: var(--couleur-mousse);
+            margin-bottom: 20px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .zone-depot h3 {
+            color: var(--couleur-terre);
+            font-size: 1.6rem;
+            margin-bottom: 15px;
+            font-weight: normal;
+            position: relative;
+            z-index: 1;
+        }
+
+        .zone-depot p {
+            color: #666;
+            margin-bottom: 25px;
+            line-height: 1.5;
+            position: relative;
+            z-index: 1;
+        }
+
+        .bouton-naturel {
+            background: linear-gradient(to bottom, var(--couleur-mousse), var(--couleur-terre));
+            color: white;
+            border: none;
+            padding: 14px 35px;
+            border-radius: 50px;
+            cursor: pointer;
+            font-size: 1.1rem;
+            font-weight: normal;
+            transition: all 0.3s ease;
+            position: relative;
+            z-index: 1;
+            letter-spacing: 0.5px;
+            box-shadow: 0 4px 15px rgba(107, 142, 35, 0.3);
+        }
+
+        .bouton-naturel:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(107, 142, 35, 0.4);
+        }
+
+        #imageInput {
+            display: none;
+        }
+
+        .apercu-image {
+            margin-top: 30px;
+            text-align: center;
+        }
+
+        #imagePreview {
+            max-width: 100%;
+            max-height: 350px;
+            border-radius: 12px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+            display: none;
+            border: 2px solid var(--couleur-sable);
+        }
+
+        .statut {
+            text-align: center;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            display: none;
+            background: rgba(210, 180, 140, 0.1);
+            border: 1px solid var(--couleur-sable);
+            color: var(--couleur-terre);
+        }
+
+        .section-resultats {
+            background: rgba(245, 241, 232, 0.5);
+            border-radius: 15px;
+            padding: 30px;
+            border: 1px solid rgba(210, 180, 140, 0.3);
+        }
+
+        .titre-resultats {
+            color: var(--couleur-terre);
+            font-size: 1.8rem;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid var(--couleur-sable);
+            text-align: center;
+            font-weight: normal;
+            letter-spacing: 1px;
+        }
+
+        .liste-predictions {
+            list-style: none;
+        }
+
+        .prediction {
+            background: white;
+            margin-bottom: 20px;
+            padding: 20px;
+            border-radius: 12px;
+            border-left: 5px solid var(--couleur-mousse);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+            transition: transform 0.3s ease;
+        }
+
+        .prediction:hover {
+            transform: translateX(5px);
+        }
+
+        .prediction .nom {
+            font-size: 1.3rem;
+            color: var(--couleur-terre);
+            margin-bottom: 10px;
+            font-weight: normal;
+            letter-spacing: 0.5px;
+        }
+
+        .barre-confiance {
+            height: 10px;
+            background: #e8e1d3;
+            border-radius: 5px;
+            margin: 15px 0;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .remplissage-confiance {
+            height: 100%;
+            background: linear-gradient(to right, var(--couleur-mousse), var(--couleur-ciel));
+            border-radius: 5px;
+            transition: width 1s ease-out;
+            position: relative;
+        }
+
+        .remplissage-confiance::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(90deg, 
+                transparent 0%, 
+                rgba(255,255,255,0.4) 50%, 
+                transparent 100%);
+            animation: scintillement 2s infinite;
+        }
+
+        @keyframes scintillement {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+
+        .valeur-confiance {
+            text-align: right;
+            font-size: 1.1rem;
+            color: var(--couleur-terre);
+            font-weight: bold;
+        }
+
+        .instructions {
+            background: rgba(210, 180, 140, 0.1);
+            padding: 25px;
+            border-radius: 12px;
+            margin-top: 30px;
+            border: 1px solid var(--couleur-sable);
+        }
+
+        .instructions h4 {
+            color: var(--couleur-terre);
+            font-size: 1.4rem;
+            margin-bottom: 15px;
+            font-weight: normal;
+        }
+
+        .instructions ul {
+            padding-left: 20px;
+            color: #666;
+            line-height: 1.6;
+        }
+
+        .instructions li {
+            margin-bottom: 8px;
+            position: relative;
+        }
+
+        .instructions li::before {
+            content: '•';
+            color: var(--couleur-mousse);
+            font-size: 1.5rem;
+            position: absolute;
+            left: -15px;
+        }
+
+        .chargement-analyse {
+            display: none;
+            text-align: center;
+            margin: 30px 0;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid #e8e1d3;
+            border-top-color: var(--couleur-mousse);
+            border-radius: 50%;
+            animation: rotation 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes rotation {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <!-- Écran de chargement initial -->
+    <div class="ecran-chargement" id="ecranChargement">
+        <div class="chargeur-naturel">
+            <div class="feuille"></div>
+            <div class="feuille"></div>
+            <div class="feuille"></div>
+            <div class="feuille"></div>
+        </div>
+        <div class="texte-chargement">
+            <h2>Préparation de l'environnement</h2>
+            <p>Chargement des modèles de reconnaissance visuelle...</p>
+            <div class="barre-progression">
+                <div class="remplissage-progression" id="barreProgression"></div>
+            </div>
+            <div class="pourcentage" id="pourcentage">0%</div>
+        </div>
+    </div>
+
+    <!-- Interface principale -->
+    <div class="conteneur-principal">
+        <div class="carte">
+            <div class="en-tete">
+                <h1>Vision Naturelle</h1>
+                <p>Une exploration organique de l'intelligence visuelle</p>
+            </div>
+            
+            <div class="contenu">
+                <div class="section-upload">
+                    <div class="zone-depot" id="zoneDepot">
+                        <div class="icone">🌿</div>
+                        <h3>Déposez votre image ici</h3>
+                        <p>Formats supportés : JPEG, PNG, WebP<br>Laissez l'IA découvrir ce qu'elle perçoit</p>
+                        <button class="bouton-naturel">Choisir une image</button>
+                        <input type="file" id="imageInput" accept="image/*">
+                    </div>
+                    
+                    <div class="statut" id="statut"></div>
+                    
+                    <div class="apercu-image">
+                        <img id="imagePreview" alt="Aperçu de l'image">
+                    </div>
+                    
+                    <div class="chargement-analyse" id="chargementAnalyse">
+                        <div class="spinner"></div>
+                        <p>Analyse en cours...</p>
+                    </div>
+                </div>
+                
+                <div class="section-resultats">
+                    <h2 class="titre-resultats">Perceptions détectées</h2>
+                    <ul class="liste-predictions" id="listePredictions">
+                        <li class="prediction">
+                            <div class="nom">En attente de vision...</div>
+                            <div class="barre-confiance">
+                                <div class="remplissage-confiance" style="width: 0%"></div>
+                            </div>
+                            <div class="valeur-confiance">0%</div>
+                        </li>
+                    </ul>
+                    
+                    <div class="instructions">
+                        <h4>Comment interpréter ces résultats</h4>
+                        <ul>
+                            <li>L'IA propose deux interprétations principales</li>
+                            <li>La barre indique le niveau de confiance</li>
+                            <li>Les images nettes améliorent la précision</li>
+                            <li>Essayez avec des éléments naturels ou du quotidien</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Éléments du DOM
+        const ecranChargement = document.getElementById('ecranChargement');
+        const barreProgression = document.getElementById('barreProgression');
+        const pourcentage = document.getElementById('pourcentage');
+        const zoneDepot = document.getElementById('zoneDepot');
+        const imageInput = document.getElementById('imageInput');
+        const imagePreview = document.getElementById('imagePreview');
+        const listePredictions = document.getElementById('listePredictions');
+        const chargementAnalyse = document.getElementById('chargementAnalyse');
+        const statut = document.getElementById('statut');
+
+        let modele = null;
+        let etapesChargement = 0;
+        const totalEtapes = 10;
+
+        // Simulation de progression avec étapes réelles
+        function majProgression(etape) {
+            etapesChargement = etape;
+            const progres = Math.min((etapesChargement / totalEtapes) * 100, 100);
+            barreProgression.style.width = `${progres}%`;
+            pourcentage.textContent = `${Math.round(progres)}%`;
+            
+            // Messages de progression
+            const messages = [
+                "Initialisation...",
+                "Chargement des bibliothèques...",
+                "Préparation des tenseurs...",
+                "Téléchargement du modèle...",
+                "Décompression des poids...",
+                "Construction du graphe...",
+                "Optimisation GPU...",
+                "Vérification mémoire...",
+                "Chargement final...",
+                "Prêt à explorer"
+            ];
+            
+            if (etape < messages.length) {
+                document.querySelector('.texte-chargement p').textContent = messages[etape];
+            }
+        }
+
+        // Charger le modèle avec suivi de progression
+        async function chargerModele() {
+            try {
+                // Simulation d'étapes de chargement
+                const etapes = [1, 2, 3, 5, 7, 9];
+                for (let i = 0; i < etapes.length; i++) {
+                    await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 400));
+                    majProgression(etapes[i]);
+                }
+
+                // Chargement réel du modèle
+                majProgression(8);
+                modele = await mobilenet.load({
+                    version: 2,
+                    alpha: 1.0
+                });
+                
+                majProgression(10);
+                
+                // Cacher l'écran de chargement avec animation
+                await new Promise(resolve => setTimeout(resolve, 500));
+                ecranChargement.classList.add('cache');
+                
+                setTimeout(() => {
+                    ecranChargement.style.display = 'none';
+                    afficherMessage("L'environnement est prêt", "succes");
+                }, 500);
+                
+            } catch (erreur) {
+                afficherMessage("Le chargement a rencontré une difficulté", "erreur");
+                console.log("Détails :", erreur);
+                ecranChargement.style.display = 'none';
+            }
+        }
+
+        // Afficher un message
+        function afficherMessage(texte, type) {
+            statut.textContent = texte;
+            statut.style.display = 'block';
+            statut.style.background = type === 'erreur' ? 
+                'rgba(139, 115, 85, 0.1)' : 
+                'rgba(107, 142, 35, 0.1)';
+            statut.style.borderColor = type === 'erreur' ? 
+                'var(--couleur-terre)' : 
+                'var(--couleur-mousse)';
+            
+            setTimeout(() => {
+                statut.style.display = 'none';
+            }, 4000);
+        }
+
+        // Analyser une image
+        async function analyserImage(elementImage) {
+            if (!modele) {
+                afficherMessage("Le modèle n'est pas disponible", "erreur");
+                return;
+            }
+
+            try {
+                chargementAnalyse.style.display = 'block';
+                
+                const predictions = await modele.classify(elementImage);
+                
+                // Prendre seulement les 2 meilleures prédictions
+                const meilleuresPredictions = predictions.slice(0, 2);
+                
+                afficherPredictions(meilleuresPredictions);
+                
+                chargementAnalyse.style.display = 'none';
+                afficherMessage("Analyse terminée", "succes");
+                
+            } catch (erreur) {
+                chargementAnalyse.style.display = 'none';
+                afficherMessage("L'analyse n'a pas abouti", "erreur");
+                console.log("Détails :", erreur);
+            }
+        }
+
+        // Afficher les prédictions
+        function afficherPredictions(predictions) {
+            listePredictions.innerHTML = '';
+            
+            predictions.forEach(prediction => {
+                const confiance = (prediction.probability * 100).toFixed(1);
+                
+                const element = document.createElement('li');
+                element.className = 'prediction';
+                
+                // Formater le nom de la classe
+                const nomFormate = prediction.className
+                    .split(',')[0] // Prendre seulement la première partie
+                    .trim()
+                    .replace(/_/g, ' ');
+                
+                element.innerHTML = `
+                    <div class="nom">${nomFormate}</div>
+                    <div class="barre-confiance">
+                        <div class="remplissage-confiance" style="width: 0%"></div>
+                    </div>
+                    <div class="valeur-confiance">${confiance}%</div>
+                `;
+                
+                listePredictions.appendChild(element);
+                
+                // Animer la barre de progression
+                setTimeout(() => {
+                    const remplissage = element.querySelector('.remplissage-confiance');
+                    remplissage.style.width = `${confiance}%`;
+                }, 100);
+            });
+        }
+
+        // Gérer le dépôt de fichier
+        function gererFichier(fichier) {
+            if (!fichier.type.match('image.*')) {
+                afficherMessage("Seules les images sont acceptées", "erreur");
+                return;
+            }
+
+            const lecteur = new FileReader();
+            
+            lecteur.onload = function(e) {
+                imagePreview.src = e.target.result;
+                imagePreview.style.display = 'block';
+            };
+            
+            lecteur.readAsDataURL(fichier);
+            
+            const img = new Image();
+            img.onload = function() {
+                analyserImage(img);
+            };
+            img.src = URL.createObjectURL(fichier);
+        }
+
+        // Gestionnaires d'événements
+        zoneDepot.addEventListener('click', () => {
+            imageInput.click();
+        });
+
+        zoneDepot.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            zoneDepot.style.background = 'rgba(235, 227, 208, 0.95)';
+            zoneDepot.style.borderColor = 'var(--couleur-mousse)';
+        });
+
+        zoneDepot.addEventListener('dragleave', () => {
+            zoneDepot.style.background = 'rgba(245, 241, 232, 0.7)';
+            zoneDepot.style.borderColor = 'var(--couleur-terre)';
+        });
+
+        zoneDepot.addEventListener('drop', (e) => {
+            e.preventDefault();
+            zoneDepot.style.background = 'rgba(245, 241, 232, 0.7)';
+            zoneDepot.style.borderColor = 'var(--couleur-terre)';
+            
+            if (e.dataTransfer.files.length) {
+                gererFichier(e.dataTransfer.files[0]);
+            }
+        });
+
+        imageInput.addEventListener('change', (e) => {
+            if (e.target.files.length) {
+                gererFichier(e.target.files[0]);
+            }
+        });
+
+        // Initialisation
+        document.addEventListener('DOMContentLoaded', () => {
+            // État initial des prédictions
+            listePredictions.innerHTML = `
+                <li class="prediction">
+                    <div class="nom">En attente de vision...</div>
+                    <div class="barre-confiance">
+                        <div class="remplissage-confiance" style="width: 0%"></div>
+                    </div>
+                    <div class="valeur-confiance">0%</div>
+                </li>
+            `;
+            
+            // Démarrer le chargement
+            chargerModele();
+        });
+
+        // Exemples d'images (optionnel)
+        const exemplesImages = [
+            'https://images.unsplash.com/photo-1546182990-dffeafbe841d?w=400&auto=format&fit=crop',
+            'https://images.unsplash.com/photo-1514888286974-6d03bde4ba42?w=400&auto=format&fit=crop',
+            'https://images.unsplash.com/photo-1518709268805-4e9042af2176?w=400&auto=format&fit=crop'
+        ];
+    </script>
+</body>
+</html>
